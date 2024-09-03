@@ -66,7 +66,6 @@ AQ_gas <- bind_rows(AQ_gaslist)
 AQ_gas$timestamp <- as.POSIXct(AQ_gas$reading_datestamp, format = "%Y-%m-%dT%H:%M:%S", tz = "UTC")
 AQ_gas$timestamp <- with_tz(AQ_gas$timestamp, "EST")
 
-#I'm stealing your script for this section for now. 
 #summarizing by hour
 completeness_threshold <- 0.75 #for comparison to regulatory data
 AQ_gas_avg <- AQ_gas %>%
