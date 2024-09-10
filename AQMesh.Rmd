@@ -66,8 +66,8 @@ AQ_gas <- bind_rows(AQ_gaslist)
 AQ_gas$timestamp <- as.POSIXct(AQ_gas$reading_datestamp, format = "%Y-%m-%dT%H:%M:%S", tz = "UTC")
 AQ_gas$timestamp <- with_tz(AQ_gas$timestamp, "EST")
 
-#summarizing by hour
-completeness_threshold <- 0.75 #for comparison to regulatory data
+#summarizing by hour but only if there is 75 percent of the data
+completeness_threshold <- 0.75
 AQ_gas_avg <- AQ_gas %>%
   mutate(hour = format(timestamp, "%Y-%m-%d %H:00:00")) %>%
   group_by(hour) %>%
@@ -88,7 +88,7 @@ AQ_gas_avg <- AQ_gas %>%
 AQ_gas_avg$hour <- as.character(format(AQ_gas_avg$hour))
 names(AQ_gas_avg)[1] <- "Date_Time"
 
-#reformatting the AQMesh pm files, same as gas just pm 
+#pulling and reformatting the AQMesh pm files, same as gas just pm 
 pm_files <- list.files(path = all_files, pattern = "aqmeshpmdata")
 AQ_pmlist <- lapply(pm_files, read.csv)
 
@@ -105,7 +105,7 @@ AQ_pm$timestamp <- as.POSIXct(AQ_pm$reading_datestamp, format = "%Y-%m-%dT%H:%M:
 AQ_pm$timestamp <- with_tz(AQ_pm$timestamp, "EST")
 
 #summarizing by hour
-completeness_threshold <- 0.75 #for comparison to regulatory data
+completeness_threshold <- 0.75
 
 AQ_pm_avg <- AQ_pm %>%
   mutate(hour = format(timestamp, "%Y-%m-%d %H:00:00")) %>%
@@ -125,7 +125,7 @@ names(AQ_pm_avg)[1] <- "Date_Time"
 
 #Pulling in East Hartford reference files, even though its one file I'm still doing list, just so you have the option to just pull new files
 #save files from Envista as csv, just makes it a tad easier in R
-#Also Envista is very weird, you have to open this file and remove the bottom summary BECAUSE this also changes the time format!
+#Also Envista is weird with date time, you have to open this file and remove the bottom summary BECAUSE this also changes the time format!
 EH_files <- list.files(path = all_files, pattern = "East_Hartford")
 EH_list <- lapply(EH_files, read.csv, skip = 2)
 
@@ -145,10 +145,10 @@ EH <- EH[,-1]
 aq <- merge(AQ_gas_avg, AQ_pm_avg, by="Date_Time")
 all <- merge(EH, aq, by="Date_Time", all.x = TRUE)
 
-#Writing a csv for all data
+#Writing a csv for all data, this is what will be downloadable on the markdown
 write.csv(all, paste0(dir, "/CT_AQMeshData.csv"), row.names=FALSE, na = "")
 
-#Making individual dataframes to compare each pollutant
+#Making individual dataframes to compare each pollutant/ reformat pollutants
 O3 <- all[, c("Date_Time", "AQ_o3", "O3")]
 names(O3) <- c("Date_Time", "AQ", "EH")
 NO2 <- all[,c("Date_Time", "AQ_no2", "NO2")]
@@ -191,16 +191,16 @@ met <- rbind(Temp,RH)
 gases$units <- "(ppb)"
 pm$units <- "(µg/m³)"
 
-#Combinded dataframe for graphing!
+#Combined dataframe for graphing!
 comb_full <- rbind(gases, pm, met)
 
-#First pulling/renaming the values that are < -100 since these are not tracking data! 
+#First pulling/renaming the values that are < -100 since we know these are not tracking data! 
 #mostly just so these dont get counted as outliers 
 comb_full$AQ <-replace(comb_full$AQ, comb_full$AQ < -100, NA)
 
 #This is detecting outliers based on the IQR Method
 #It basically will find values in Q1 and Q3 multiple by 1.5 and fence off those values, BUT it will rename the outlier "Outlier"
-#This could be another good characteristic to judge (percentage of outliers in the dataset)
+#Renaming so you can later count specifically what was counted as an outlier 
 detect_outlier <- function(x,iqtimes=1.5) {
   # calculate first quantile
   Quantile1 <- quantile(x, probs=.25, na.rm = T)
@@ -214,7 +214,7 @@ detect_outlier <- function(x,iqtimes=1.5) {
   return(x)
 }
 
-#designating what columns to clean!
+#designating what columns to clean, goes based on what is numeric
 cols_to_clean <- names(comb_full)[sapply(comb_full, is.numeric)]
 
 #Running the function
@@ -227,16 +227,13 @@ comb <- comb_out
 comb$AQ <- as.numeric(comb$AQ)
 comb$EH <- as.numeric(comb$EH)
 
-#dropping NAs from the date column
+#dropping NAs from the date column, there uselessly are not any but this could effect graphing
 comb_out <- comb_out %>% drop_na(Date_Time)
-
-#changing na to "no_data" so this can be used to calc on table
-comb_out$AQ[is.na(comb_out$AQ)] <- "no_data"
-comb_out$EH[is.na(comb_out$EH)] <- "no_data"
 
 #This adds the quarter an year, but I dont like the format so also changing that
 comb$Quarter <- as.yearqtr(comb$Date_Time, format = "%Y-%m-%d")
 comb$Quarter <- format(comb$Quarter, format = "%q (%Y)")
+
 
 ```
 
@@ -286,6 +283,7 @@ An AQMesh air quality monitoring sensor was installed at a monitoring site in Ea
 
 ## Setup
 ```{r, echo = FALSE, out.width = '110%', out.height= '110%', fig.show = 'hold', fig.align = 'center', fig.cap=' '}
+#adding the photo of the sensor
 knitr::include_graphics(c("AQMesh.png"))
 ```
 ## Methods 
@@ -522,28 +520,36 @@ correlation[['Relative Humidity']]
 ```
 
 ```{r, echo=FALSE, results = 'asis'}
-
 #finding outliers
-o <- comb_out %>%
+Outlier <- comb_out %>%
+  # Create a new column to check if "outlier" is present
+  mutate(Contains_Outlier = grepl("outlier", AQ, ignore.case = TRUE)) %>%
+  # Group by Data_Type
   group_by(Data_Type) %>%
-  count(AQ) 
+  # Summarize the percentage of rows containing "outlier"
+  summarize(
+    Total_Count = n(),
+    Outlier_Count = sum(Contains_Outlier),
+    Percentage_Outlier = (Outlier_Count / Total_Count) * 100
+  )
 
-#This is just finding the outlier percentage
-o <- o %>%
+#rounding the data
+Outlier <- Outlier %>% mutate(across(where(is.numeric), ~ round(., 2)))
+
+#Finding the na percent
+na <- comb_out %>%
   group_by(Data_Type) %>%
-  mutate(percent = n/nrow(o))
-Outlier <- subset(o, AQ == "outlier")
-Outlier$percent <- Outlier$percent *100
+  summarise(
+    total = n(),
+    na_count = sum(is.na(AQ)),
+    na_percent = (na_count / total) * 100
+  )
+na$na <- 100 - na$na_percent
+na <- na[c("Data_Type", "na")]
+names(na)[2] <- "complete"
 
-Outlier<- Outlier %>% mutate(across(where(is.numeric), ~ round(., 2)))
-
-#This is just finding the no data percentage
-n <- subset(o, AQ == "no_data")
-names(n)[4] <- "cpercent"
-n$cpercent <- n$cpercent * 100
-n$complete <- 100 - n$cpercent
-
-n <- n %>% mutate(across(where(is.numeric), ~ round(., 1)))
+#rounding
+na <- na %>% mutate(across(where(is.numeric), ~ round(., 1)))
 
 #Root mean square error
 comb <- na.omit(comb)
@@ -554,8 +560,9 @@ rmse <- comb %>%
   )
 rmse <- rmse %>% mutate(across(where(is.numeric), ~ round(., 2)))
   
+#merging everything together 
 Outlier <- merge(rmse, Outlier, by = "Data_Type", all.x = TRUE)
-Outlier <- merge(Outlier, n, by = "Data_Type", all.x = TRUE)
+Outlier <- merge(Outlier, na, by = "Data_Type", all.x = TRUE)
 
 #setting up data for a table
 EH_AQ <- do.call(rbind, lapply(unique(comb$Data_Type), function(d) {
@@ -568,7 +575,7 @@ EH_AQ <- do.call(rbind, lapply(unique(comb$Data_Type), function(d) {
 EH_AQ <- EH_AQ %>% mutate(across(where(is.numeric), ~ round(., 2)))
 #binding them for the table!
 table <- merge(EH_AQ, Outlier, by = "Data_Type", all.x = TRUE)
-table <- table[c("Data_Type","r_squared", "Slope", "Intercept","RMSE", "percent", "complete")]
+table <- table[c("Data_Type","r_squared", "Slope", "Intercept","RMSE", "Percentage_Outlier", "complete")]
 table$complete[is.na(table$complete)] <- "100"
 
 #making a table!
@@ -583,7 +590,7 @@ table1 <- table |>
     r_squared = ("R\u00b2"),
     Slope = ("Slope"),
     Intercept = ("Y-Intercept"),
-    percent= ("Outlier Percentage"),
+    Percentage_Outlier = ("Outlier Percentage"),
     complete= ("Data Completeness"))|>
 cols_align(
   align = ("center"),
