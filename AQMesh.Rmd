@@ -6,7 +6,7 @@ output:
     css: "style.css"
     toc: true
     toc_float: true
-    toc_depth: 4
+    toc_depth: 3
     toccolor: black
     theme: lumen
 ---
@@ -264,7 +264,7 @@ An AQMesh air quality monitoring sensor was installed at a monitoring site in Ea
 </td>
 <td style ="vertical-align:top; padding: 8px; border: 1px solid black;"> <b> Sensor: </b> $6,663.00 <br> <b> Sonic Anemometer: </b> $4,998.00 <br> <b> Solar Configuration: </b> $1,967.00 <br> <b> Cellular Communications (Annual): </b> $420.00 <br> <b> API or Dashboard: </b> $1,260.00
 </td>
-<td style ="vertical-align:top; padding: 8px; border: 1px solid black;"> Basic Download (CSV), API, Web Application <br> (Data stored locally on SD card)
+<td style ="vertical-align:top; padding: 8px; border: 1px solid black;"> Basic Download (CSV), API, Web Application <br> (Data stored locally as backup only, inaccessible to customer)
 </td>
 <td style ="vertical-align:top; padding: 8px; border: 1px solid black;"> Smart Solar Pack, Rechargeable NiMH battery, Mains DC Power
 </td>
@@ -276,7 +276,7 @@ An AQMesh air quality monitoring sensor was installed at a monitoring site in Ea
 <br>
 <b> PM~2.5~ & PM~10~:</b> Teledyne API T640X
 <br>
-<b> Temp & RH: </b> AutoMet 580
+<b> Temp & RH: </b> Climatronix & Vaisala via AutoMet 580
 </td>
 </tr>
 </table>
@@ -287,7 +287,7 @@ An AQMesh air quality monitoring sensor was installed at a monitoring site in Ea
 knitr::include_graphics(c("AQMesh.png"))
 ```
 ## Methods 
-  One AQMesh pod was installed at CT DEEP’s McAuliffe Park Ambient Air Monitoring Station following collocation requirements from Ambilabs: sited greater than 0.5m above roof level, 1 meter horizontally from reference inlets, and free of any obstructions that could impact the free movement of air. The AQMesh was powered by a solar panel and battery pack purchasable from Ambilabs, and wind speed and direction were provided through a Davis anemometer.  Data from the AQMesh pod were streamed to a central DAS over a 3G cellular connection and averaged into 15-minute intervals. CT DEEP accessed data through an API feed. Data were averaged into hour-intervals for comparison with regulatory O~3~, NO~2~, PM~2.5~, PM~10~, and meteorological instrumentation. “Presale” data fields were used in analysis. AQMesh offers linear regression analysis for collocated pods, but regressions were conducted by CT DEEP and applied to data manually to preserve corrected vs uncorrected data comparisons. 
+  One AQMesh pod was installed at CT DEEP’s McAuliffe Park Ambient Air Monitoring Station following collocation requirements from Ambilabs: sited greater than 0.5m above roof level, 1 meter horizontally from reference inlets, and free of any obstructions that could impact the free movement of air. The AQMesh was powered by a solar panel and battery pack purchasable from Ambilabs, and wind speed and direction were provided through a Davis anemometer.  Data from the AQMesh pod were streamed to a central DAS over a 3G cellular connection and averaged into 15-minute intervals. CT DEEP accessed data through an API feed. Data were averaged into hour-intervals for comparison with regulatory O~3~, NO~2~, PM~2.5~, PM~10~, and meteorological instrumentation. “Prescale” data fields were used in analysis. AQMesh offers linear regression analysis for collocated pods, but regressions were conducted by CT DEEP and applied to data manually to preserve corrected vs uncorrected data comparisons. 
 
 <br>
 
@@ -578,6 +578,15 @@ table <- merge(EH_AQ, Outlier, by = "Data_Type", all.x = TRUE)
 table <- table[c("Data_Type","r_squared", "Slope", "Intercept","RMSE", "Percentage_Outlier", "complete")]
 table$complete[is.na(table$complete)] <- "100"
 
+AQ_RDS <- table[c("Data_Type", "r_squared")]
+saveRDS(AQ_RDS, file="AQ_RDS.rds")
+
+# Define the range for the slope
+slope_min <- 1.0 - 0.35
+slope_max <- 1.0 + 0.35
+slopeminO3 <- 1.0 - 0.20
+slopemaxO3 <- 1.0 + 0.20
+  
 #making a table!
 table1 <- table |>
   gt(
@@ -589,14 +598,70 @@ table1 <- table |>
   cols_label(
     r_squared = ("R\u00b2"),
     Slope = ("Slope"),
-    Intercept = ("Y-Intercept"),
+    Intercept = ("Intercept"),
     Percentage_Outlier = ("Outlier Percentage"),
     complete= ("Data Completeness"))|>
 cols_align(
   align = ("center"),
   columns = everything())|>
 sub_missing(
-  missing_text = "0.00")
+  missing_text = "0.00")|>
+tab_footnote(
+    footnote =("Bolded values indicate the target was met for PM and gas data according to the recommended EPA performance metrics."), 
+    locations = cells_title("subtitle"))|>
+  tab_options(
+      footnotes.font.size = px(11))|>
+tab_style(
+      style = list(cell_text(weight = "bold")), 
+      locations = cells_body(
+      columns = vars(r_squared),
+      rows = Data_Type == "O₃" & r_squared >= 0.8))|>
+tab_style(
+      style = list(cell_text(weight = "bold")), 
+      locations = cells_body(
+      columns = vars(r_squared),
+      rows = Data_Type %in% c("NO₂","PM₂.₅","PM₁₀")  & r_squared >= 0.7))|>
+tab_style(
+      style = list(cell_text(weight = "bold")), 
+      locations = cells_body(
+      columns = vars(Slope),
+      rows = Data_Type == "O₃"  &  Slope >= slopeminO3 & Slope <= slopemaxO3))|>
+tab_style(
+      style = list(cell_text(weight = "bold")), 
+      locations = cells_body(
+      columns = vars(Slope),
+      rows = Data_Type %in% c("NO₂","PM₂.₅","PM₁₀")  &  Slope >= slope_min & Slope <= slope_max))|>
+tab_style(
+      style = list(cell_text(weight = "bold")), 
+      locations = cells_body(
+      columns = vars(Intercept),
+      rows = Data_Type %in% c("NO₂", "O₃", "PM₂.₅") & Intercept > -5 & Intercept < 5))|>
+tab_style(
+      style = list(cell_text(weight = "bold")), 
+      locations = cells_body(
+      columns = vars(Intercept),
+      rows = Data_Type %in% c("PM₁₀") & Intercept > - 10 & Intercept < 10))|>
+tab_style(
+      style = list(cell_text(weight = "bold")), 
+      locations = cells_body(
+      columns = vars(RMSE),
+      rows = Data_Type == "O₃" & RMSE <= 5))|>
+tab_style(
+      style = list(cell_text(weight = "bold")), 
+      locations = cells_body(
+      columns = vars(RMSE),
+      rows = Data_Type == "NO₂" & RMSE <= 15))|>
+tab_style(
+      style = list(cell_text(weight = "bold")), 
+      locations = cells_body(
+      columns = vars(RMSE),
+      rows = Data_Type ==  "PM₂.₅" & RMSE <= 7))|>
+tab_style(
+      style = list(cell_text(weight = "bold")), 
+      locations = cells_body(
+      columns = vars(RMSE),
+      rows = Data_Type ==  "PM₁₀" & RMSE <= 14))
+
 
 gtsave(table1, "table1.png")
 
@@ -612,3 +677,7 @@ knitr::include_graphics("table1.png")
   PM~10~ readings were significantly impacted by the “fog affect” that typically occurs at dawn between the hours of 3-6am EST during summer months. AQMesh flags coarse particulate readings with the code “deliquescence” if measured RH values are above a threshold, however those flags were not largely applied in our dataset. During these fog events, PM~10~ values were reported at anomalously high values due to interference with the optical particle counter. These outliers were removed from the dataset using the IQR method, in which all data points 1.5 beyond the lower and upper bound quartiles were excluded. Due to the limitations of the OPCs, data from these fog windows- especially in summer months- would have to be excluded from a dataset. Several studies suggest a heatded inlet would decrease this humidity sensitivity, however that was not evaluated due to our solar configuration.  
 
   With outliers removed from the dataset, PM~2.5~ was the only parameter which fell within acceptable levels in comparison to EPA Air Sensor Performance Targets. PM~2.5~ shows significant correlation through linear regression models and acceptable offset and RMSE, with slope just outside of the target range. With outliers excluded, PM~10~ data show acceptable offset and RMSE, but with slope and R^2^ beyond target ranges. O~3~ data are just outside of targets for slope, R^2^ and RMSE, but display an acceptable offset. NO~2~ measurements showed weak to non-correlation with the regulatory instrument. Temperature and RH measurements in the pod were expected to vary slightly from station measurements due to the location of the sensors within the sensor housing. However, results show that temperature and RH correlate well with ambient measurements and can be expected to track near ambient levels. Data capture is 100% during the testing window, with no significant (greater than 7 minutes) power disruptions. The only data unavailable for analysis were PM~2.5~ and PM~10~ measurements flagged for deliquescence in the AQMesh DAS.  
+
+# Contact Information
+Questions on Connecticut community based monitoring: DEEP.AirMonitoring@ct.gov <br>
+Questions on creating this report: Jessica.Landry@ct.gov
