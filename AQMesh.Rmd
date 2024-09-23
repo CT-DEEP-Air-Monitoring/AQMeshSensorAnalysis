@@ -234,6 +234,8 @@ comb_out <- comb_out %>% drop_na(Date_Time)
 comb$Quarter <- as.yearqtr(comb$Date_Time, format = "%Y-%m-%d")
 comb$Quarter <- format(comb$Quarter, format = "%q (%Y)")
 
+#Truncating the values 
+comb$AQ <- trunc(comb$AQ * 10) / 10
 
 ```
 
@@ -304,12 +306,15 @@ for (i in unique(comb$Quarter)){
 for (j in unique(i_comb$Data_Type)){
   
   j_comb <- subset(i_comb, i_comb$Data_Type==j)
+  j_comb$Date_Time <- as.POSIXct(j_comb$Date_Time)
   
    plot_name <- paste0("Q_", i, "_", j)
 
   timeseries[[plot_name]] <- plot_ly(data= j_comb, x = ~Date_Time) %>%
-    add_lines(y = ~EH, name = "Reference", line = list(color = "black"), opacity = 0.9) %>%
-    add_lines(y = ~AQ, name = "AQMesh ", line = list(color = "blue"), opacity = 0.6) %>%
+    add_lines(y = ~EH, name = "Reference", line = list(color = "black"), opacity = 0.9,
+    hoverinfo = 'text', text = ~paste0(format(Date_Time, "%m/%d/%y %H:%M"),"<br>","Reference: ", EH)) %>%
+    add_lines(y = ~AQ, name = "AQMesh", line = list(color = "blue"), opacity = 0.6,
+    hoverinfo = 'text', text = ~paste0(format(Date_Time, "%m/%d/%y %H:%M"),"<br>","AQMesh: ", AQ)) %>%
     layout(title = list(text = paste0("AQMesh Sensor: ", unique(j_comb$Data_Type)," Comparision",
                                       "<br>",
                                       "<sup>", 
@@ -573,6 +578,7 @@ EH_AQ <- do.call(rbind, lapply(unique(comb$Data_Type), function(d) {
 }))
 
 EH_AQ <- EH_AQ %>% mutate(across(where(is.numeric), ~ round(., 2)))
+
 #binding them for the table!
 table <- merge(EH_AQ, Outlier, by = "Data_Type", all.x = TRUE)
 table <- table[c("Data_Type","r_squared", "Slope", "Intercept","RMSE", "Percentage_Outlier", "complete")]
