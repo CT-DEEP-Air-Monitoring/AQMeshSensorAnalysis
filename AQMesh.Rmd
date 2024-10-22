@@ -125,7 +125,6 @@ names(AQ_pm_avg)[1] <- "Date_Time"
 
 #Pulling in East Hartford reference files, even though its one file I'm still doing list, just so you have the option to just pull new files
 #save files from Envista as csv, just makes it a tad easier in R
-#Also Envista is weird with date time, you have to open this file and remove the bottom summary BECAUSE this also changes the time format!
 EH_files <- list.files(path = all_files, pattern = "East_Hartford")
 EH_list <- lapply(EH_files, read.csv, skip = 2)
 
