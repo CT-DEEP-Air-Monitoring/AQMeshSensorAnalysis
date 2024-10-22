@@ -295,6 +295,7 @@ knitr::include_graphics(c("AQMesh.png"))
 ```{r timeseries, results = 'asis', echo = FALSE}
 #This makes a list of timeseries plots with two loops, first through the quarter/year then through datatype
 #Output is a timeseries graph for each quarter/year for each measurement 
+#Then below I'm just including each graph within the loop by their name, this allows me to customize where each graph is going 
 timeseries = list()
 
 idx <- 1
@@ -322,7 +323,7 @@ for (j in unique(i_comb$Data_Type)){
            xaxis = list(title = " ",
                         type = 'date',
                         tickformat = "%B %d <br>%Y"),
-           annotations = list(x = 0.60, y = -0.17, text = paste0("<i>  *Outliers removed from AQMesh dataset using IQR Method.                                                                  </i>"), 
+           annotations = list(x = 0.60, y = -0.17, text = paste0("<i>  *Outliers removed from AQMesh dataset using IQR Method. </i>"), 
       showarrow = F, xref='paper', yref='paper', 
       xanchor='right', yanchor='auto', xshift=0, yshift=0,
       font=list(size=12, color="grey")),
@@ -524,6 +525,7 @@ correlation[['Relative Humidity']]
 ```
 
 ```{r, echo=FALSE, results = 'asis'}
+#Running and reformatting all statistics for the table
 #finding outliers
 Outlier <- comb_out %>%
   # Create a new column to check if "outlier" is present
@@ -583,10 +585,7 @@ table <- merge(EH_AQ, Outlier, by = "Data_Type", all.x = TRUE)
 table <- table[c("Data_Type","r_squared", "Slope", "Intercept","RMSE", "Percentage_Outlier", "complete")]
 table$complete[is.na(table$complete)] <- "100"
 
-AQ_RDS <- table[c("Data_Type", "r_squared")]
-saveRDS(AQ_RDS, file="AQ_RDS.rds")
-
-# Define the range for the slope
+# Define the range for the slope so these can be highlighted on the table 
 slope_min <- 1.0 - 0.35
 slope_max <- 1.0 + 0.35
 slopeminO3 <- 1.0 - 0.20
@@ -674,6 +673,7 @@ gtsave(table1, "table1.png")
 # Results Summary
 
 ```{r,fig.align = 'left', results='asis', echo = FALSE}
+#including the table image
 knitr::include_graphics("table1.png")
 ```
 <i> \*Outliers were defined from the AQMesh dataset using the IQR Method (all data points more than 1.5 below the the lower bound quartile or above the upper bound quartile). </i>
